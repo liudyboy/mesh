@@ -1664,7 +1664,8 @@ def infer_model(estimator,
 
 def eval_model(estimator, vocabulary, sequence_length, batch_size,
                dataset_split, model_dir, eval_dataset_fn, eval_summary_dir,
-               eval_checkpoint_step, eval_with_score=False):
+               eval_checkpoint_step, eval_with_score=False,
+               output_eval_examples=True):
   """Eval a Mesh-TF model.
 
   Args:
@@ -1704,6 +1705,8 @@ def eval_model(estimator, vocabulary, sequence_length, batch_size,
       `tf.train.checkpoints_iterator`.
     eval_with_score: bool, whether to evaluate using log likelihood scores of
       targets instead of decoded predictions.
+    output_eval_examples: bool, whether to dump inputs, targets and predictions
+      of the eval examples in plaintext to eval_summary_dir.
   """
   if eval_dataset_fn is None:
     raise ValueError("Must provide eval_dataset_fn through gin for eval.")
@@ -1765,16 +1768,16 @@ def eval_model(estimator, vocabulary, sequence_length, batch_size,
                   tf.compat.as_text(ex["targets_plaintext"]),
                   example=ex, is_target=True)
           )
-        targets_filename = os.path.join(
-            eval_summary_dir,
-            "{}_targets".format(eval_dataset.name),
-        )
-        write_lines_to_file(targets, targets_filename)
-
-        inputs_filename = os.path.join(
-            eval_summary_dir,
-            "{}_inputs".format(eval_dataset.name))
-        write_lines_to_file(inputs, inputs_filename)
+        if output_eval_examples:
+          targets_filename = os.path.join(
+              eval_summary_dir,
+              "{}_targets".format(eval_dataset.name),
+          )
+          write_lines_to_file(targets, targets_filename)
+          inputs_filename = os.path.join(
+              eval_summary_dir,
+              "{}_inputs".format(eval_dataset.name))
+          write_lines_to_file(inputs, inputs_filename)
 
         cached_targets[eval_dataset.name] = targets
         cached_examples[eval_dataset.name] = examples
@@ -1846,11 +1849,12 @@ def eval_model(estimator, vocabulary, sequence_length, batch_size,
 
       global_step = int(get_step_from_checkpoint_path(checkpoint_path))
 
-      predictions_filename = os.path.join(
-          eval_summary_dir,
-          "{}_{}_predictions".format(eval_dataset.name, global_step),
-      )
-      write_lines_to_file(predictions, predictions_filename)
+      if output_eval_examples:
+        predictions_filename = os.path.join(
+            eval_summary_dir,
+            "{}_{}_predictions".format(eval_dataset.name, global_step),
+        )
+        write_lines_to_file(predictions, predictions_filename)
 
       for metric_fn in eval_dataset.metric_fns:
         summary = tf.Summary()
@@ -2202,7 +2206,8 @@ def run(tpu_job_name,
         init_checkpoint=None,
         ensemble_inputs=None,
         train_model_fn=train_model,
-        skip_seen_data=False):
+        skip_seen_data=False,
+        output_eval_examples=True):
   """Run training, eval, or inference depending on `mode`.
 
   Args:
@@ -2266,6 +2271,9 @@ def run(tpu_job_name,
       restarts to skip already seen data. This flag is only consistent when
       every setting (such as batch size and random seed) on the model is the
       same between the original run and the new run.
+    output_eval_examples: a boolean, is `True` by default. Used to decide
+      whether to output whether to dump inputs, targets, and predictions of the
+      eval examples in plaintext to eval_summary_dir.
   """
   if isinstance(sequence_length, int):
     sequence_length = {"inputs": sequence_length,
@@ -2398,7 +2406,8 @@ def run(tpu_job_name,
   elif mode in ("eval", "score_eval"):
     eval_model(estimator_fn, vocabulary, sequence_length, batch_size,
                dataset_split, model_dir, eval_dataset_fn, eval_summary_dir,
-               eval_checkpoint_step, eval_with_score=(mode == "score_eval"))
+               eval_checkpoint_step, eval_with_score=(mode == "score_eval"),
+               output_eval_examples=output_eval_examples)
   elif mode == "infer":
     infer_model(estimator, vocabulary, sequence_length, batch_size, model_type,
                 model_dir, eval_checkpoint_step)
